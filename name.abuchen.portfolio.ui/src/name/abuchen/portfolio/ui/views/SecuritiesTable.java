@@ -1158,6 +1158,51 @@ public final class SecuritiesTable implements ModificationListener
         }
     }
 
+    /**
+     * Returns the quotes at the start and at the end of the reporting period.
+     * If both ends resolve to the same quote (for example funds that publish
+     * their NAV with a delay, or a weekend), the quote at the end is compared
+     * with the last quote published before it.
+     */
+    /* package */ static Optional<Pair<SecurityPrice, SecurityPrice>> getPricesOfReportingPeriod(Security security,
+                    ReportingPeriod period, LocalDate today)
+    {
+        Interval interval = period.toInterval(today);
+
+        SecurityPrice latest = security.getSecurityPrice(interval.getEnd());
+        SecurityPrice previous = security.getSecurityPrice(interval.getStart());
+
+        if (latest == null || previous == null)
+            return Optional.empty();
+
+        if (previous.getValue() == 0)
+            return Optional.empty();
+
+        if (previous.getDate().isAfter(interval.getStart()))
+            return Optional.empty();
+
+        // Delayed-NAV funds may return the same published quote for both
+        // ends of the reporting interval. In that case keep the quote at the
+        // end of the reporting period and compare it with the last quote
+        // published before it, matching the behaviour of FT and Morningstar.
+        if (latest.getDate().equals(previous.getDate()))
+        {
+            var history = security.getPricesIncludingLatest();
+
+            for (var i = history.size() - 1; i >= 0; i--)
+            {
+                var candidate = history.get(i);
+
+                if (candidate.getDate().isBefore(latest.getDate()) && candidate.getValue() != 0)
+                    return Optional.of(new Pair<>(candidate, latest));
+            }
+
+            return Optional.empty();
+        }
+
+        return Optional.of(new Pair<>(previous, latest));
+    }
+
     private static final class QuoteReportingPeriodLabelProvider
                     extends ParameterizedColumnLabelProvider<ReportingPeriod>
     {
@@ -1248,48 +1293,7 @@ public final class SecuritiesTable implements ModificationListener
 
         private static Optional<Pair<SecurityPrice, SecurityPrice>> getPrices(Security security, ReportingPeriod period)
         {
-            Interval interval = period.toInterval(LocalDate.now());
-
-            SecurityPrice latest = security.getSecurityPrice(interval.getEnd());
-            SecurityPrice previous = security.getSecurityPrice(interval.getStart());
-
-            if (latest == null || previous == null)
-                return Optional.empty();
-
-            if (previous.getValue() == 0)
-                return Optional.empty();
-
-            if (previous.getDate().isAfter(interval.getStart()))
-                return Optional.empty();
-
-            // Delayed-NAV funds may return the same published quote for both
-            // ends of the reporting interval. In that case fall back to the
-            // latest two published prices, matching the behaviour of FT and
-            // Morningstar.
-
-            if (latest.getDate().equals(previous.getDate()))
-            {
-                var history = security.getPricesIncludingLatest();
-
-                if (history.size() < 2)
-                    return Optional.empty();
-
-                latest = history.get(history.size() - 1);
-
-                for (var i = history.size() - 2; i >= 0; i--)
-                {
-                    previous = history.get(i);
-
-                    if (previous.getValue() != 0 && !previous.getDate().equals(latest.getDate()))
-                    {
-                        return Optional.of(new Pair<>(previous, latest));
-                    }
-                }
-
-                return Optional.empty();
-            }
-
-            return Optional.of(new Pair<>(previous, latest));
+            return getPricesOfReportingPeriod(security, period, LocalDate.now());
         }
 
         @Override
