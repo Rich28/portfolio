@@ -1267,7 +1267,7 @@ public final class SecuritiesTable implements ModificationListener
             // latest two published prices, matching the behaviour of FT and
             // Morningstar.
 
-             if (latest.getDate().equals(previous.getDate()))
+            if (latest.getDate().equals(previous.getDate()))
             {
                 var history = security.getPricesIncludingLatest();
 
@@ -1280,17 +1280,18 @@ public final class SecuritiesTable implements ModificationListener
                 {
                     previous = history.get(i);
 
-                    if (previous.getValue() != 0
-                            && !previous.getDate().equals(latest.getDate()))
+                    if (previous.getValue() != 0 && !previous.getDate().equals(latest.getDate()))
                     {
                         return Optional.of(new Pair<>(previous, latest));
                     }
                 }
 
                 return Optional.empty();
-            
+            }
+
             return Optional.of(new Pair<>(previous, latest));
         }
+
         @Override
         public Image getImage(Object e)
         {
